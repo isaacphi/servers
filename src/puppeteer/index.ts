@@ -34,9 +34,18 @@ const TOOLS: Tool[] = [
       type: "object",
       properties: {
         name: { type: "string", description: "Name for the screenshot" },
-        selector: { type: "string", description: "CSS selector for element to screenshot" },
-        width: { type: "number", description: "Width in pixels (default: 800)" },
-        height: { type: "number", description: "Height in pixels (default: 600)" },
+        selector: {
+          type: "string",
+          description: "CSS selector for element to screenshot",
+        },
+        width: {
+          type: "number",
+          description: "Width in pixels (default: 800)",
+        },
+        height: {
+          type: "number",
+          description: "Height in pixels (default: 600)",
+        },
       },
       required: ["name"],
     },
@@ -47,7 +56,10 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        selector: { type: "string", description: "CSS selector for element to click" },
+        selector: {
+          type: "string",
+          description: "CSS selector for element to click",
+        },
       },
       required: ["selector"],
     },
@@ -58,7 +70,10 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        selector: { type: "string", description: "CSS selector for input field" },
+        selector: {
+          type: "string",
+          description: "CSS selector for input field",
+        },
         value: { type: "string", description: "Value to fill" },
       },
       required: ["selector", "value"],
@@ -70,7 +85,10 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        selector: { type: "string", description: "CSS selector for element to select" },
+        selector: {
+          type: "string",
+          description: "CSS selector for element to select",
+        },
         value: { type: "string", description: "Value to select" },
       },
       required: ["selector", "value"],
@@ -82,7 +100,10 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        selector: { type: "string", description: "CSS selector for element to hover" },
+        selector: {
+          type: "string",
+          description: "CSS selector for element to hover",
+        },
       },
       required: ["selector"],
     },
@@ -108,7 +129,10 @@ const screenshots = new Map<string, string>();
 
 async function ensureBrowser() {
   if (!browser) {
-    browser = await puppeteer.launch({ headless: false });
+    browser = await puppeteer.launch({
+      executablePath: "/opt/homebrew/chromium",
+      headless: false,
+    });
     const pages = await browser.pages();
     page = pages[0];
 
@@ -124,7 +148,10 @@ async function ensureBrowser() {
   return page!;
 }
 
-async function handleToolCall(name: string, args: any): Promise<{ toolResult: CallToolResult }> {
+async function handleToolCall(
+  name: string,
+  args: any,
+): Promise<{ toolResult: CallToolResult }> {
   const page = await ensureBrowser();
 
   switch (name) {
@@ -132,10 +159,12 @@ async function handleToolCall(name: string, args: any): Promise<{ toolResult: Ca
       await page.goto(args.url);
       return {
         toolResult: {
-          content: [{
-            type: "text",
-            text: `Navigated to ${args.url}`,
-          }],
+          content: [
+            {
+              type: "text",
+              text: `Navigated to ${args.url}`,
+            },
+          ],
           isError: false,
         },
       };
@@ -145,17 +174,21 @@ async function handleToolCall(name: string, args: any): Promise<{ toolResult: Ca
       const height = args.height ?? 600;
       await page.setViewport({ width, height });
 
-      const screenshot = await (args.selector ?
-        (await page.$(args.selector))?.screenshot({ encoding: "base64" }) :
-        page.screenshot({ encoding: "base64", fullPage: false }));
+      const screenshot = await (args.selector
+        ? (await page.$(args.selector))?.screenshot({ encoding: "base64" })
+        : page.screenshot({ encoding: "base64", fullPage: false }));
 
       if (!screenshot) {
         return {
           toolResult: {
-            content: [{
-              type: "text",
-              text: args.selector ? `Element not found: ${args.selector}` : "Screenshot failed",
-            }],
+            content: [
+              {
+                type: "text",
+                text: args.selector
+                  ? `Element not found: ${args.selector}`
+                  : "Screenshot failed",
+              },
+            ],
             isError: true,
           },
         };
@@ -189,20 +222,24 @@ async function handleToolCall(name: string, args: any): Promise<{ toolResult: Ca
         await page.click(args.selector);
         return {
           toolResult: {
-            content: [{
-              type: "text",
-              text: `Clicked: ${args.selector}`,
-            }],
+            content: [
+              {
+                type: "text",
+                text: `Clicked: ${args.selector}`,
+              },
+            ],
             isError: false,
           },
         };
       } catch (error) {
         return {
           toolResult: {
-            content: [{
-              type: "text",
-              text: `Failed to click ${args.selector}: ${(error as Error).message}`,
-            }],
+            content: [
+              {
+                type: "text",
+                text: `Failed to click ${args.selector}: ${(error as Error).message}`,
+              },
+            ],
             isError: true,
           },
         };
@@ -214,20 +251,24 @@ async function handleToolCall(name: string, args: any): Promise<{ toolResult: Ca
         await page.type(args.selector, args.value);
         return {
           toolResult: {
-            content: [{
-              type: "text",
-              text: `Filled ${args.selector} with: ${args.value}`,
-            }],
+            content: [
+              {
+                type: "text",
+                text: `Filled ${args.selector} with: ${args.value}`,
+              },
+            ],
             isError: false,
           },
         };
       } catch (error) {
         return {
           toolResult: {
-            content: [{
-              type: "text",
-              text: `Failed to fill ${args.selector}: ${(error as Error).message}`,
-            }],
+            content: [
+              {
+                type: "text",
+                text: `Failed to fill ${args.selector}: ${(error as Error).message}`,
+              },
+            ],
             isError: true,
           },
         };
@@ -239,20 +280,24 @@ async function handleToolCall(name: string, args: any): Promise<{ toolResult: Ca
         await page.select(args.selector, args.value);
         return {
           toolResult: {
-            content: [{
-              type: "text",
-              text: `Selected ${args.selector} with: ${args.value}`,
-            }],
+            content: [
+              {
+                type: "text",
+                text: `Selected ${args.selector} with: ${args.value}`,
+              },
+            ],
             isError: false,
           },
         };
       } catch (error) {
         return {
           toolResult: {
-            content: [{
-              type: "text",
-              text: `Failed to select ${args.selector}: ${(error as Error).message}`,
-            }],
+            content: [
+              {
+                type: "text",
+                text: `Failed to select ${args.selector}: ${(error as Error).message}`,
+              },
+            ],
             isError: true,
           },
         };
@@ -264,20 +309,24 @@ async function handleToolCall(name: string, args: any): Promise<{ toolResult: Ca
         await page.hover(args.selector);
         return {
           toolResult: {
-            content: [{
-              type: "text",
-              text: `Hovered ${args.selector}`,
-            }],
+            content: [
+              {
+                type: "text",
+                text: `Hovered ${args.selector}`,
+              },
+            ],
             isError: false,
           },
         };
       } catch (error) {
         return {
           toolResult: {
-            content: [{
-              type: "text",
-              text: `Failed to hover ${args.selector}: ${(error as Error).message}`,
-            }],
+            content: [
+              {
+                type: "text",
+                text: `Failed to hover ${args.selector}: ${(error as Error).message}`,
+              },
+            ],
             isError: true,
           },
         };
@@ -289,9 +338,9 @@ async function handleToolCall(name: string, args: any): Promise<{ toolResult: Ca
           const logs: string[] = [];
           const originalConsole = { ...console };
 
-          ['log', 'info', 'warn', 'error'].forEach(method => {
+          ["log", "info", "warn", "error"].forEach((method) => {
             (console as any)[method] = (...args: any[]) => {
-              logs.push(`[${method}] ${args.join(' ')}`);
+              logs.push(`[${method}] ${args.join(" ")}`);
               (originalConsole as any)[method](...args);
             };
           });
@@ -311,7 +360,7 @@ async function handleToolCall(name: string, args: any): Promise<{ toolResult: Ca
             content: [
               {
                 type: "text",
-                text: `Execution result:\n${JSON.stringify(result.result, null, 2)}\n\nConsole output:\n${result.logs.join('\n')}`,
+                text: `Execution result:\n${JSON.stringify(result.result, null, 2)}\n\nConsole output:\n${result.logs.join("\n")}`,
               },
             ],
             isError: false,
@@ -320,10 +369,12 @@ async function handleToolCall(name: string, args: any): Promise<{ toolResult: Ca
       } catch (error) {
         return {
           toolResult: {
-            content: [{
-              type: "text",
-              text: `Script execution failed: ${(error as Error).message}`,
-            }],
+            content: [
+              {
+                type: "text",
+                text: `Script execution failed: ${(error as Error).message}`,
+              },
+            ],
             isError: true,
           },
         };
@@ -332,10 +383,12 @@ async function handleToolCall(name: string, args: any): Promise<{ toolResult: Ca
     default:
       return {
         toolResult: {
-          content: [{
-            type: "text",
-            text: `Unknown tool: ${name}`,
-          }],
+          content: [
+            {
+              type: "text",
+              text: `Unknown tool: ${name}`,
+            },
+          ],
           isError: true,
         },
       };
@@ -355,7 +408,6 @@ const server = new Server(
   },
 );
 
-
 // Setup request handlers
 server.setRequestHandler(ListResourcesRequestSchema, async () => ({
   resources: [
@@ -364,7 +416,7 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => ({
       mimeType: "text/plain",
       name: "Browser console logs",
     },
-    ...Array.from(screenshots.keys()).map(name => ({
+    ...Array.from(screenshots.keys()).map((name) => ({
       uri: `screenshot://${name}`,
       mimeType: "image/png",
       name: `Screenshot: ${name}`,
@@ -377,11 +429,13 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 
   if (uri === "console://logs") {
     return {
-      contents: [{
-        uri,
-        mimeType: "text/plain",
-        text: consoleLogs.join("\n"),
-      }],
+      contents: [
+        {
+          uri,
+          mimeType: "text/plain",
+          text: consoleLogs.join("\n"),
+        },
+      ],
     };
   }
 
@@ -390,11 +444,13 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const screenshot = screenshots.get(name);
     if (screenshot) {
       return {
-        contents: [{
-          uri,
-          mimeType: "image/png",
-          blob: screenshot,
-        }],
+        contents: [
+          {
+            uri,
+            mimeType: "image/png",
+            blob: screenshot,
+          },
+        ],
       };
     }
   }
@@ -407,7 +463,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request) =>
-  handleToolCall(request.params.name, request.params.arguments ?? {})
+  handleToolCall(request.params.name, request.params.arguments ?? {}),
 );
 
 async function runServer() {
@@ -416,3 +472,4 @@ async function runServer() {
 }
 
 runServer().catch(console.error);
+
