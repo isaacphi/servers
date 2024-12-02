@@ -143,6 +143,42 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["query"],
         },
       },
+      {
+        name: "read_google_drive_file",
+        description: "Read contents of a file from Google Drive",
+        inputSchema: {
+          type: "object",
+          properties: {
+            fileId: {
+              type: "string",
+              description: "ID of the file to read",
+            },
+          },
+          required: ["fileId"],
+        },
+      },
+      {
+        name: "update_cell",
+        description: "Update a cell value in a Google Spreadsheet",
+        inputSchema: {
+          type: "object",
+          properties: {
+            fileId: {
+              type: "string",
+              description: "ID of the spreadsheet",
+            },
+            range: {
+              type: "string",
+              description: "Cell range in A1 notation (e.g. 'Sheet1!A1')",
+            },
+            value: {
+              type: "string",
+              description: "New cell value",
+            },
+          },
+          required: ["fileId", "range", "value"],
+        },
+      },
     ],
   };
 });
@@ -152,21 +188,113 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const userQuery = request.params.arguments?.query as string;
     const escapedQuery = userQuery.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
     const formattedQuery = `fullText contains '${escapedQuery}'`;
-    
+
     const res = await drive.files.list({
       q: formattedQuery,
       pageSize: 10,
       fields: "files(id, name, mimeType, modifiedTime, size)",
     });
-    
+
     const fileList = res.data.files
-      ?.map((file: any) => `${file.name} (${file.mimeType})`)
+      ?.map((file: any) => `${file.id} ${file.name} (${file.mimeType})`)
       .join("\n");
     return {
       content: [
         {
           type: "text",
           text: `Found ${res.data.files?.length ?? 0} files:\n${fileList}`,
+        },
+      ],
+      isError: false,
+    };
+  } else if (request.params.name === "read_google_drive_file") {
+    const fileId = request.params.arguments?.fileId as string;
+
+    // First get file metadata to check mime type
+    const file = await drive.files.get({
+      fileId,
+      fields: "mimeType,name",
+    });
+
+    // For Google Docs/Sheets/etc we need to export
+    if (file.data.mimeType?.startsWith("application/vnd.google-apps")) {
+      let exportMimeType: string;
+      switch (file.data.mimeType) {
+        case "application/vnd.google-apps.document":
+          exportMimeType = "text/markdown";
+          break;
+        case "application/vnd.google-apps.spreadsheet":
+          exportMimeType = "text/csv";
+          break;
+        case "application/vnd.google-apps.presentation":
+          exportMimeType = "text/plain";
+          break;
+        case "application/vnd.google-apps.drawing":
+          exportMimeType = "image/png";
+          break;
+        default:
+          exportMimeType = "text/plain";
+      }
+
+      const res = await drive.files.export(
+        { fileId, mimeType: exportMimeType },
+        { responseType: "text" },
+      );
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Contents of ${file.data.name}:\n\n${res.data}`,
+          },
+        ],
+        isError: false,
+      };
+    }
+
+    // For regular files download content
+    const res = await drive.files.get(
+      { fileId, alt: "media" },
+      { responseType: "arraybuffer" },
+    );
+    const mimeType = file.data.mimeType || "application/octet-stream";
+    let content;
+    if (mimeType.startsWith("text/") || mimeType === "application/json") {
+      content = Buffer.from(res.data as ArrayBuffer).toString("utf-8");
+    } else {
+      content = Buffer.from(res.data as ArrayBuffer).toString("base64");
+    }
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Contents of ${file.data.name}:\n\n${content}`,
+        },
+      ],
+      isError: false,
+    };
+  } else if (request.params.name === "update_cell") {
+    const fileId = request.params.arguments?.fileId as string;
+    const range = request.params.arguments?.range as string;
+    const value = request.params.arguments?.value as string;
+
+    const sheets = google.sheets({ version: "v4" });
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: fileId,
+      range: range,
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [[value]],
+      },
+    });
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Updated cell ${range} to value: ${value}`,
         },
       ],
       isError: false,
@@ -187,7 +315,10 @@ async function authenticateAndSaveCredentials() {
       path.dirname(new URL(import.meta.url).pathname),
       "../../../gcp-oauth.keys.json",
     ),
-    scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+    scopes: [
+      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/spreadsheets",
+    ],
   });
   fs.writeFileSync(credentialsPath, JSON.stringify(auth.credentials));
   console.log("Credentials saved. You can now run the server.");
