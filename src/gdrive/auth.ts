@@ -67,13 +67,14 @@ async function authenticateAndSaveCredentials() {
   }
 }
 
-export async function loadOrRefreshCredentials() {
+// Try to load credentials without prompting for auth
+export async function loadCredentialsQuietly() {
   console.error("Attempting to load credentials from:", credentialsPath);
   const oauth2Client = new google.auth.OAuth2();
 
   if (!fs.existsSync(credentialsPath)) {
-    console.error("No credentials file found, starting new auth flow");
-    return await authenticateAndSaveCredentials();
+    console.error("No credentials file found");
+    return null;
   }
 
   try {
@@ -92,43 +93,54 @@ export async function loadOrRefreshCredentials() {
       hasRefreshToken: !!savedCreds.refresh_token,
     });
 
-    if (timeToExpiry < fiveMinutes) {
-      console.error("Token needs refresh (expires in less than 5 minutes)");
-      if (savedCreds.refresh_token) {
-        console.error("Attempting to refresh token using refresh_token");
+    if (timeToExpiry < fiveMinutes && savedCreds.refresh_token) {
+      console.error("Attempting to refresh token using refresh_token");
+      try {
         const response = await oauth2Client.refreshAccessToken();
         const newCreds = response.credentials;
         ensureCredsDirectory();
         fs.writeFileSync(credentialsPath, JSON.stringify(newCreds, null, 2));
         oauth2Client.setCredentials(newCreds);
         console.error("Token refreshed and saved successfully");
-      } else {
-        console.error("No refresh token available, launching new auth flow");
-        return await authenticateAndSaveCredentials();
+      } catch (error) {
+        console.error("Failed to refresh token:", error);
+        return null;
       }
-    } else {
-      console.error(
-        `Token still valid for ${Math.floor(timeToExpiry / (60 * 1000))} minutes`,
-      );
     }
 
     return oauth2Client;
   } catch (error) {
-    console.error("Error loading/refreshing credentials:", error);
-    console.error("Starting fresh authentication flow");
-    return await authenticateAndSaveCredentials();
+    console.error("Error loading credentials:", error);
+    return null;
   }
 }
 
+// Get valid credentials, prompting for auth if necessary
+export async function getValidCredentials(forceAuth = false) {
+  if (!forceAuth) {
+    const quietAuth = await loadCredentialsQuietly();
+    if (quietAuth) {
+      return quietAuth;
+    }
+  }
+
+  return await authenticateAndSaveCredentials();
+}
+
+// Background refresh that never prompts for auth
 export function setupTokenRefresh() {
   console.error("Setting up automatic token refresh interval (45 minutes)");
   return setInterval(
     async () => {
       try {
         console.error("Running scheduled token refresh check");
-        const auth = await loadOrRefreshCredentials();
-        google.options({ auth });
-        console.error("Completed scheduled token refresh");
+        const auth = await loadCredentialsQuietly();
+        if (auth) {
+          google.options({ auth });
+          console.error("Completed scheduled token refresh");
+        } else {
+          console.error("Skipping token refresh - no valid credentials");
+        }
       } catch (error) {
         console.error("Error in automatic token refresh:", error);
       }
