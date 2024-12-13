@@ -142,4 +142,3 @@ async function startServer() {
 
 // Start server immediately
 startServer().catch(console.error);
-

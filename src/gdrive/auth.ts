@@ -70,7 +70,11 @@ async function authenticateAndSaveCredentials() {
 // Try to load credentials without prompting for auth
 export async function loadCredentialsQuietly() {
   console.error("Attempting to load credentials from:", credentialsPath);
-  const oauth2Client = new google.auth.OAuth2();
+
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.CLIENT_ID,
+    process.env.CLIENT_SECRET,
+  );
 
   if (!fs.existsSync(credentialsPath)) {
     console.error("No credentials file found");
@@ -148,4 +152,3 @@ export function setupTokenRefresh() {
     45 * 60 * 1000,
   );
 }
-
