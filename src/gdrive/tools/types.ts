@@ -22,6 +22,8 @@ export interface InternalToolResponse {
 // Input types for each tool
 export interface GDriveSearchInput {
   query: string;
+  pageToken?: string;
+  pageSize?: number;
 }
 
 export interface GDriveReadFileInput {
@@ -33,3 +35,10 @@ export interface GSheetsUpdateCellInput {
   range: string;
   value: string;
 }
+
+export interface GSheetsReadInput {
+  spreadsheetId: string;
+  ranges?: string[]; // Optional A1 notation ranges like "Sheet1!A1:B10"
+  sheetId?: number; // Optional specific sheet ID
+}
+
