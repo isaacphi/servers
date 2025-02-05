@@ -45,12 +45,15 @@ Event Count: {self.count}
             description=f"Sentry Issue: {self.title}",
             messages=[
                 types.PromptMessage(
-                    role="user", content=types.TextContent(type="text", text=self.to_text())
+                    role="user",
+                    content=types.TextContent(type="text", text=self.to_text()),
                 )
             ],
         )
 
-    def to_tool_result(self) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    def to_tool_result(
+        self,
+    ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
         return [types.TextContent(type="text", text=self.to_text())]
 
 
@@ -72,7 +75,9 @@ def extract_issue_id(issue_id_or_url: str) -> str:
     if issue_id_or_url.startswith(("http://", "https://")):
         parsed_url = urlparse(issue_id_or_url)
         if not parsed_url.hostname or not parsed_url.hostname.endswith(".sentry.io"):
-            raise SentryError("Invalid Sentry URL. Must be a URL ending with .sentry.io")
+            raise SentryError(
+                "Invalid Sentry URL. Must be a URL ending with .sentry.io"
+            )
 
         path_parts = parsed_url.path.strip("/").split("/")
         if len(path_parts) < 2 or path_parts[0] != "issues":
@@ -177,13 +182,48 @@ async def handle_sentry_issue(
             first_seen=issue_data["firstSeen"],
             last_seen=issue_data["lastSeen"],
             count=issue_data["count"],
-            stacktrace=stacktrace
+            stacktrace=stacktrace,
         )
 
     except SentryError as e:
         raise McpError(str(e))
     except httpx.HTTPStatusError as e:
         raise McpError(f"Error fetching Sentry issue: {str(e)}")
+    except Exception as e:
+        raise McpError(f"An error occurred: {str(e)}")
+
+
+async def handle_sentry_issues(
+    http_client: httpx.AsyncClient,
+    auth_token: str,
+    org_slug: str,
+    project_slug: str,
+    query: str | None = None,
+    stats_period: str | None = "24h",
+) -> list[dict]:
+    try:
+        params = {}
+        if query:
+            params["query"] = query
+        if stats_period:
+            params["statsPeriod"] = stats_period
+
+        response = await http_client.get(
+            f"projects/{org_slug}/{project_slug}/issues/",
+            params=params,
+            headers={"Authorization": f"Bearer {auth_token}"},
+        )
+
+        if response.status_code == 401:
+            raise McpError(
+                "Error: Unauthorized. Please check your MCP_SENTRY_AUTH_TOKEN token."
+            )
+        response.raise_for_status()
+
+        return response.json()
+
+    except httpx.HTTPStatusError as e:
+        raise McpError(f"Error fetching Sentry issues: {str(e)}")
     except Exception as e:
         raise McpError(f"An error occurred: {str(e)}")
 
@@ -235,28 +275,87 @@ async def serve(auth_token: str) -> Server:
                     "properties": {
                         "issue_id_or_url": {
                             "type": "string",
-                            "description": "Sentry issue ID or URL to analyze"
+                            "description": "Sentry issue ID or URL to analyze",
                         }
                     },
-                    "required": ["issue_id_or_url"]
-                }
-            )
+                    "required": ["issue_id_or_url"],
+                },
+            ),
+            types.Tool(
+                name="query-sentry-issues",
+                description="Query Sentry issues for a project",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "org_slug": {
+                            "type": "string",
+                            "description": "Organization slug",
+                        },
+                        "project_slug": {
+                            "type": "string",
+                            "description": "Project slug",
+                        },
+                        "query": {
+                            "type": "string",
+                            "description": "Sentry search query",
+                        },
+                        "stats_period": {
+                            "type": "string",
+                            "description": "Stats period (24h, 14d, or empty)",
+                            "enum": ["24h", "14d", ""],
+                        },
+                    },
+                    "required": ["org_slug", "project_slug"],
+                },
+            ),
         ]
 
     @server.call_tool()
     async def handle_call_tool(
         name: str, arguments: dict | None
     ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
-        if name != "get-sentry-issue":
-            raise ValueError(f"Unknown tool: {name}")
+        if name == "get-sentry-issue":
+            if not arguments or "issue_id_or_url" not in arguments:
+                raise ValueError("Missing issue_id_or_url argument")
+            issue_data = await handle_sentry_issue(
+                http_client, auth_token, arguments["issue_id_or_url"]
+            )
+            return issue_data.to_tool_result()
 
-        if not arguments or "issue_id_or_url" not in arguments:
-            raise ValueError("Missing issue_id_or_url argument")
+        elif name == "query-sentry-issues":
+            if (
+                not arguments
+                or "org_slug" not in arguments
+                or "project_slug" not in arguments
+            ):
+                raise ValueError("Missing required arguments")
 
-        issue_data = await handle_sentry_issue(http_client, auth_token, arguments["issue_id_or_url"])
-        return issue_data.to_tool_result()
+            issues = await handle_sentry_issues(
+                http_client,
+                auth_token,
+                arguments["org_slug"],
+                arguments["project_slug"],
+                arguments.get("query"),
+                arguments.get("stats_period", "24h"),
+            )
+
+            summary = "\n".join(
+                f"Issue: {issue['title']}\n"
+                f"ID: {issue['id']}\n"
+                f"Status: {issue['status']}\n"
+                f"Events: {issue['count']}\n"
+                f"First seen: {issue['firstSeen']}\n"
+                f"Last seen: {issue['lastSeen']}\n"
+                "---"
+                for issue in issues
+            )
+
+            return [types.TextContent(type="text", text=summary)]
+
+        raise ValueError(f"Unknown tool: {name}")
 
     return server
+
 
 @click.command()
 @click.option(
@@ -283,3 +382,7 @@ def main(auth_token: str):
             )
 
     asyncio.run(_run())
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
